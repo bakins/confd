@@ -17,6 +17,12 @@ type StoreClient interface {
 	WatchPrefix(prefix string, waitIndex uint64, stopChan chan bool) (uint64, error)
 }
 
+// NewBackendClient is the function that custom backends must implement.  It takes
+// an array of backend nodes.
+type NewBackendClient func([]string) (StoreClient, error)
+
+var backends = map[string]NewBackendClient{}
+
 // New is used to create a storage client based on our configuration.
 func New(config Config) (StoreClient, error) {
 	if config.Backend == "" {
@@ -33,6 +39,15 @@ func New(config Config) (StoreClient, error) {
 		return etcd.NewEtcdClient(backendNodes, config.ClientCert, config.ClientKey, config.ClientCaKeys)
 	case "env":
 		return env.NewEnvClient()
+	default:
+		if backend := backends[config.Backend]; backend != nil {
+			return backend(backendNodes)
+		}
+		return nil, errors.New("Invalid backend")
 	}
-	return nil, errors.New("Invalid backend")
+}
+
+// Register can be used to extend confd. Backends must implement the StoreClient interface
+func Register(name string, constructor NewBackendClient) {
+	backends[name] = constructor
 }
