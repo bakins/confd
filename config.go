@@ -1,4 +1,4 @@
-package main
+package confd
 
 import (
 	"errors"
@@ -25,22 +25,22 @@ var (
 	clientCert        string
 	clientKey         string
 	confdir           string
-	config            Config // holds the global confd config.
+	Cfg               Config // holds the global confd config.
 	debug             bool
 	interval          int
 	keepStageFile     bool
 	nodes             Nodes
 	noop              bool
-	onetime           bool
+	Onetime           bool
 	prefix            string
-	printVersion      bool
+	PrintVersion      bool
 	quiet             bool
 	scheme            string
 	srvDomain         string
-	templateConfig    template.Config
-	backendsConfig    backends.Config
+	TemplateConfig    template.Config
+	BackendsConfig    backends.Config
 	verbose           bool
-	watch             bool
+	Watch             bool
 )
 
 // A Config structure is used to configure confd.
@@ -74,28 +74,28 @@ func init() {
 	flag.BoolVar(&keepStageFile, "keep-stage-file", false, "keep staged files")
 	flag.Var(&nodes, "node", "list of backend nodes")
 	flag.BoolVar(&noop, "noop", false, "only show pending changes")
-	flag.BoolVar(&onetime, "onetime", false, "run once and exit")
+	flag.BoolVar(&Onetime, "onetime", false, "run once and exit")
 	flag.StringVar(&prefix, "prefix", "/", "key path prefix")
-	flag.BoolVar(&printVersion, "version", false, "print version and exit")
+	flag.BoolVar(&PrintVersion, "version", false, "print version and exit")
 	flag.BoolVar(&quiet, "quiet", false, "enable quiet logging")
 	flag.StringVar(&scheme, "scheme", "http", "the backend URI scheme (http or https)")
 	flag.StringVar(&srvDomain, "srv-domain", "", "the name of the resource record")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
-	flag.BoolVar(&watch, "watch", false, "enable watch support")
+	flag.BoolVar(&Watch, "watch", false, "enable watch support")
 }
 
 // initConfig initializes the confd configuration by first setting defaults,
 // then overriding setting from the confd config file, and finally overriding
 // settings from flags set on the command line.
 // It returns an error if any.
-func initConfig() error {
+func InitConfig() error {
 	if configFile == "" {
 		if _, err := os.Stat(defaultConfigFile); !os.IsNotExist(err) {
 			configFile = defaultConfigFile
 		}
 	}
 	// Set defaults.
-	config = Config{
+	Cfg = Config{
 		Backend:  "etcd",
 		ConfDir:  "/etc/confd",
 		Interval: 600,
@@ -111,7 +111,7 @@ func initConfig() error {
 		if err != nil {
 			return err
 		}
-		_, err = toml.Decode(string(configBytes), &config)
+		_, err = toml.Decode(string(configBytes), &Cfg)
 		if err != nil {
 			return err
 		}
@@ -120,65 +120,66 @@ func initConfig() error {
 	processFlags()
 
 	// Configure logging.
-	log.SetQuiet(config.Quiet)
-	log.SetVerbose(config.Verbose)
-	log.SetDebug(config.Debug)
+	log.SetQuiet(Cfg.Quiet)
+	log.SetVerbose(Cfg.Verbose)
+	log.SetDebug(Cfg.Debug)
 
 	// Update BackendNodes from SRV records.
-	if config.Backend != "env" && config.SRVDomain != "" {
-		log.Info("SRV domain set to " + config.SRVDomain)
-		srvNodes, err := getBackendNodesFromSRV(config.Backend, config.SRVDomain, config.Scheme)
+	if Cfg.Backend != "env" && Cfg.SRVDomain != "" {
+		log.Info("SRV domain set to " + Cfg.SRVDomain)
+		srvNodes, err := getBackendNodesFromSRV(Cfg.Backend, Cfg.SRVDomain, Cfg.Scheme)
 		if err != nil {
 			return errors.New("Cannot get nodes from SRV records " + err.Error())
 		}
-		config.BackendNodes = srvNodes
+		Cfg.BackendNodes = srvNodes
 	}
-	if len(config.BackendNodes) == 0 {
-		switch config.Backend {
+	if len(Cfg.BackendNodes) == 0 {
+		switch Cfg.Backend {
 		case "consul":
-			config.BackendNodes = []string{"127.0.0.1:8500"}
+			Cfg.BackendNodes = []string{"127.0.0.1:8500"}
 		case "etcd":
 			peerstr := os.Getenv("ETCDCTL_PEERS")
 			if len(peerstr) > 0 {
-				config.BackendNodes = strings.Split(peerstr, ",")
+				Cfg.BackendNodes = strings.Split(peerstr, ",")
 			} else {
-				config.BackendNodes = []string{"http://127.0.0.1:4001"}
+				Cfg.BackendNodes = []string{"http://127.0.0.1:4001"}
 			}
 		case "redis":
-			config.BackendNodes = []string{"127.0.0.1:6379"}
+			Cfg.BackendNodes = []string{"127.0.0.1:6379"}
 		}
 	}
 	// Initialize the storage client
-	log.Notice("Backend set to " + config.Backend)
+	log.Notice("Backend set to " + Cfg.Backend)
 
-	if config.Watch {
+	if Cfg.Watch {
 		unsupportedBackends := map[string]bool{
 			"zookeeper": true,
 			"redis":     true,
 		}
 
-		if unsupportedBackends[config.Backend] {
-			log.Notice(fmt.Sprintf("Watch is not supported for backend %s. Exiting...", config.Backend))
+		if unsupportedBackends[Cfg.Backend] {
+			log.Notice(fmt.Sprintf("Watch is not supported for backend %s. Exiting...", Cfg.Backend))
 			os.Exit(1)
 		}
 	}
 
-	backendsConfig = backends.Config{
-		Backend:      config.Backend,
-		ClientCaKeys: config.ClientCaKeys,
-		ClientCert:   config.ClientCert,
-		ClientKey:    config.ClientKey,
-		BackendNodes: config.BackendNodes,
-		Scheme:       config.Scheme,
+	BackendsConfig = backends.Config{
+		Backend:      Cfg.Backend,
+		ClientCaKeys: Cfg.ClientCaKeys,
+		ClientCert:   Cfg.ClientCert,
+		ClientKey:    Cfg.ClientKey,
+		BackendNodes: Cfg.BackendNodes,
+		Scheme:       Cfg.Scheme,
 	}
-	// Template configuration.
-	templateConfig = template.Config{
-		ConfDir:       config.ConfDir,
-		ConfigDir:     filepath.Join(config.ConfDir, "conf.d"),
+
+	// Template Configuration.
+	TemplateConfig = template.Config{
+		ConfDir:       Cfg.ConfDir,
+		ConfigDir:     filepath.Join(Cfg.ConfDir, "conf.d"),
 		KeepStageFile: keepStageFile,
-		Noop:          config.Noop,
-		Prefix:        config.Prefix,
-		TemplateDir:   filepath.Join(config.ConfDir, "templates"),
+		Noop:          Cfg.Noop,
+		Prefix:        Cfg.Prefix,
+		TemplateDir:   filepath.Join(Cfg.ConfDir, "templates"),
 	}
 	return nil
 }
@@ -199,7 +200,7 @@ func getBackendNodesFromSRV(backend, domain, scheme string) ([]string, error) {
 }
 
 // processFlags iterates through each flag set on the command line and
-// overrides corresponding configuration settings.
+// overrides corresponding Configuration settings.
 func processFlags() {
 	flag.Visit(setConfigFromFlag)
 }
@@ -207,34 +208,34 @@ func processFlags() {
 func setConfigFromFlag(f *flag.Flag) {
 	switch f.Name {
 	case "backend":
-		config.Backend = backend
+		Cfg.Backend = backend
 	case "debug":
-		config.Debug = debug
+		Cfg.Debug = debug
 	case "client-cert":
-		config.ClientCert = clientCert
+		Cfg.ClientCert = clientCert
 	case "client-key":
-		config.ClientKey = clientKey
+		Cfg.ClientKey = clientKey
 	case "client-cakeys":
-		config.ClientCaKeys = clientCaKeys
+		Cfg.ClientCaKeys = clientCaKeys
 	case "confdir":
-		config.ConfDir = confdir
+		Cfg.ConfDir = confdir
 	case "node":
-		config.BackendNodes = nodes
+		Cfg.BackendNodes = nodes
 	case "interval":
-		config.Interval = interval
+		Cfg.Interval = interval
 	case "noop":
-		config.Noop = noop
+		Cfg.Noop = noop
 	case "prefix":
-		config.Prefix = prefix
+		Cfg.Prefix = prefix
 	case "quiet":
-		config.Quiet = quiet
+		Cfg.Quiet = quiet
 	case "scheme":
-		config.Scheme = scheme
+		Cfg.Scheme = scheme
 	case "srv-domain":
-		config.SRVDomain = srvDomain
+		Cfg.SRVDomain = srvDomain
 	case "verbose":
-		config.Verbose = verbose
+		Cfg.Verbose = verbose
 	case "watch":
-		config.Watch = watch
+		Cfg.Watch = Watch
 	}
 }
