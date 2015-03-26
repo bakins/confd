@@ -5,7 +5,7 @@ set -e
 GO="godep go"
 
 echo "Building confd..."
-OLD=`pwd`
-cd confd
+CONFD_ROOT=$(cd $(dirname $0); pwd)
+cd $CONFD_ROOT/confd
 # Static compilation is useful when confd is run in a container
-CGO_ENABLED=0 $GO build -a -installsuffix cgo -ldflags '-s' -o $OLD/bin/confd
+CGO_ENABLED=0 $GO build -a -installsuffix cgo -ldflags '-s' -o $CONFD_ROOT/bin/confd
