@@ -10,28 +10,21 @@ package log
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
-
-	log "github.com/Sirupsen/logrus"
 )
-
-type ConfdFormatter struct {
-}
-
-func (c *ConfdFormatter) Format(entry *log.Entry) ([]byte, error) {
-	timestamp := time.Now().Format(time.RFC3339)
-	hostname, _ := os.Hostname()
-	return []byte(fmt.Sprintf("%s %s %s[%d]: %s %s\n", timestamp, hostname, tag, os.Getpid(), strings.ToUpper(entry.Level.String()), entry.Message)), nil
-}
 
 // tag represents the application name generating the log message. The tag
 // string will appear in all log entires.
 var tag string
 
+var (
+	quiet   = false // Silence non-error messages.
+	verbose = false
+	debug   = false
+)
+
 func init() {
 	tag = os.Args[0]
-	log.SetFormatter(&ConfdFormatter{})
 }
 
 // SetTag sets the tag.
@@ -39,36 +32,72 @@ func SetTag(t string) {
 	tag = t
 }
 
-// SetLevel sets the log level. Valid levels are panic, fatal, error, warn, info and debug.
-func SetLevel(level string) {
-	lvl, err := log.ParseLevel(level)
-	if err != nil {
-		Fatal(fmt.Sprintf(`not a valid level: "%s"`, level))
-	}
-	log.SetLevel(lvl)
+// SetQuiet sets quiet mode.
+func SetQuiet(enable bool) {
+	quiet = enable
+}
+
+// SetDebug sets debug mode.
+func SetDebug(enable bool) {
+	debug = enable
+}
+
+// SetVerbose sets verbose mode.
+func SetVerbose(enable bool) {
+	verbose = enable
 }
 
 // Debug logs a message with severity DEBUG.
 func Debug(msg string) {
-	log.Debug(msg)
+	if debug {
+		write("DEBUG", msg)
+	}
 }
 
 // Error logs a message with severity ERROR.
 func Error(msg string) {
-	log.Error(msg)
+	write("ERROR", msg)
 }
 
 // Fatal logs a message with severity ERROR followed by a call to os.Exit().
 func Fatal(msg string) {
-	log.Fatal(msg)
+	write("ERROR", msg)
+	os.Exit(1)
 }
 
 // Info logs a message with severity INFO.
 func Info(msg string) {
-	log.Info(msg)
+	write("INFO", msg)
+}
+
+// Notice logs a message with severity NOTICE.
+func Notice(msg string) {
+	if verbose || debug {
+		write("NOTICE", msg)
+	}
 }
 
 // Warning logs a message with severity WARNING.
 func Warning(msg string) {
-	log.Warning(msg)
+	write("WARNING", msg)
+}
+
+// write writes error messages to stderr and all others to stdout.
+// Messages are written in the following format:
+//     timestamp hostname tag[pid]: SEVERITY Message
+func write(level, msg string) {
+	var w *os.File
+	timestamp := time.Now().Format(time.RFC3339)
+	hostname, _ := os.Hostname()
+	switch level {
+	case "DEBUG", "INFO", "NOTICE", "WARNING":
+		if quiet {
+			return
+		}
+		w = os.Stdout
+	case "ERROR":
+		w = os.Stderr
+	}
+	fmt.Fprintf(w, "%s %s %s[%d]: %s %s\n",
+		timestamp, hostname, tag, os.Getpid(), level, msg)
 }
