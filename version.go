@@ -1,3 +1,3 @@
 package confd
 
-const Version = "0.7.1"
+const Version = "0.10.0-dev"
